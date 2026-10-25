@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Dining Philosophers (Monitor)</title>
+<style>
+body{font-family:sans-serif;margin:20px;background:#f4f4f4}
+.box{display:inline-block;margin:6px;padding:10px 14px;border-radius:8px;color:#fff;min-width:120px;text-align:center}
+#res{padding:10px;margin:10px 0;background:#fff;border:2px solid #555;border-radius:8px}
+#log{height:220px;overflow:auto;background:#fff;border:1px solid #ccc;padding:6px;font-family:monospace;font-size:13px}
+button{margin-right:6px;padding:4px 12px}
+</style></head><body>
+<h2>Dining Philosophers (Monitor)</h2>
+<div>
+ <button onclick="play()">Start</button><button onclick="pause()">Pause</button>
+ <button onclick="reset()">Reset</button>
+ Speed <input type="range" id="speed" min="1" max="10" value="5">
+ <span id="clock"></span>
+</div>
+<div id="stage"></div>
+<h3>Event timeline</h3><div id="log"></div>
+<script>
+const EVENTS = [{"actor": "P0", "state": "thinking", "t": 0.0}, {"actor": "P2", "state": "thinking", "t": 0.001}, {"actor": "P1", "state": "thinking", "t": 0.001}, {"actor": "P3", "state": "thinking", "t": 0.001}, {"actor": "P0", "state": "hungry", "t": 0.209}, {"actor": "P0", "state": "eating", "forks": [0, 0, -1, -1], "t": 0.209}, {"actor": "P1", "state": "hungry", "t": 0.248}, {"actor": "P2", "state": "hungry", "t": 0.271}, {"actor": "P2", "state": "eating", "forks": [0, 0, 2, 2], "t": 0.271}, {"actor": "P0", "state": "releasing", "forks": [-1, -1, 2, 2], "t": 0.586}, {"actor": "P0", "state": "thinking", "t": 0.586}, {"actor": "P3", "state": "hungry", "t": 0.615}, {"actor": "P2", "state": "releasing", "forks": [-1, -1, -1, -1], "t": 0.692}, {"actor": "P2", "state": "thinking", "t": 0.693}, {"actor": "P1", "state": "eating", "forks": [-1, 1, 1, -1], "t": 0.693}, {"actor": "P3", "state": "eating", "forks": [3, 1, 1, 3], "t": 0.693}, {"actor": "P3", "state": "releasing", "forks": [-1, 1, 1, -1], "t": 1.134}, {"actor": "P3", "state": "thinking", "t": 1.134}, {"actor": "P2", "state": "hungry", "t": 1.305}, {"actor": "P0", "state": "hungry", "t": 1.33}, {"actor": "P1", "state": "releasing", "forks": [-1, -1, -1, -1], "t": 1.331}, {"actor": "P1", "state": "thinking", "t": 1.331}, {"actor": "P0", "state": "eating", "forks": [0, 0, -1, -1], "t": 1.331}, {"actor": "P2", "state": "eating", "forks": [0, 0, 2, 2], "t": 1.331}, {"actor": "P3", "state": "hungry", "t": 1.402}, {"actor": "P0", "state": "releasing", "forks": [-1, -1, 2, 2], "t": 1.719}, {"actor": "P0", "state": "thinking", "t": 1.719}, {"actor": "P2", "state": "releasing", "forks": [-1, -1, -1, -1], "t": 1.794}, {"actor": "P2", "state": "thinking", "t": 1.794}, {"actor": "P3", "state": "eating", "forks": [3, -1, -1, 3], "t": 1.794}, {"actor": "P1", "state": "hungry", "t": 1.795}, {"actor": "P1", "state": "eating", "forks": [3, 1, 1, 3], "t": 1.795}, {"actor": "P1", "state": "releasing", "forks": [3, -1, -1, 3], "t": 2.18}, {"actor": "P1", "state": "thinking", "t": 2.18}, {"actor": "P0", "state": "hungry", "t": 2.234}, {"actor": "P2", "state": "hungry", "t": 2.421}, {"actor": "P3", "state": "releasing", "forks": [-1, -1, -1, -1], "t": 2.511}, {"actor": "P3", "state": "thinking", "t": 2.511}, {"actor": "P2", "state": "eating", "forks": [-1, -1, 2, 2], "t": 2.511}, {"actor": "P0", "state": "eating", "forks": [0, 0, 2, 2], "t": 2.511}, {"actor": "P1", "state": "hungry", "t": 2.549}, {"actor": "P2", "state": "releasing", "forks": [0, 0, -1, -1], "t": 2.851}, {"actor": "P2", "state": "thinking", "t": 2.851}, {"actor": "P3", "state": "hungry", "t": 2.983}, {"actor": "P0", "state": "releasing", "forks": [-1, -1, -1, -1], "t": 3.253}, {"actor": "P0", "state": "thinking", "t": 3.253}, {"actor": "P3", "state": "eating", "forks": [3, -1, -1, 3], "t": 3.253}, {"actor": "P1", "state": "eating", "forks": [3, 1, 1, 3], "t": 3.253}, {"actor": "P1", "state": "releasing", "forks": [3, -1, -1, 3], "t": 3.819}, {"actor": "P1", "state": "thinking", "t": 3.819}, {"actor": "P3", "state": "releasing", "forks": [-1, -1, -1, -1], "t": 3.819}, {"actor": "P3", "state": "thinking", "t": 3.82}];
+const KIND = "dp";
+const COLORS = {waiting:"#e67e22",reading:"#27ae60",writing:"#c0392b",done:"#7f8c8d",
+  thinking:"#2980b9",hungry:"#e67e22",acquiring:"#8e44ad",eating:"#27ae60",releasing:"#16a085"};
+const OWNER_COLORS = ["#c0392b","#2980b9","#27ae60","#8e44ad"];
+let idx = 0, timer = null, st = {}, readers = 0, data = 0, forks = [-1,-1,-1,-1];
+
+function apply(e) {
+  st[e.actor] = e.state;
+  if (e.readers !== undefined) readers = e.readers;
+  if (e.data !== undefined) data = e.data;
+  if (e.forks !== undefined) forks = e.forks;
+}
+
+function draw() {
+  const stage = document.getElementById("stage");
+  if (KIND === "rw") {
+    const names = [...new Set(EVENTS.map(e => e.actor))];
+    let h = "";
+    for (const n of names) {
+      const s = st[n] || "idle";
+      h += `<div class="box" style="background:${COLORS[s] || "#999"}"><b>${n}</b><br>${s}</div>`;
+    }
+    const writerActive = Object.values(st).includes("writing");
+    h += `<div id="res"><b>Shared resource</b> &mdash; value: ${data} |
+      active readers: ${readers} | writer inside: ${writerActive ? "YES" : "no"}</div>`;
+    stage.innerHTML = h;
+  } else {
+    let svg = '<svg width="420" height="420"><circle cx="210" cy="210" r="70" fill="#ddd"/>';
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2 - Math.PI / 2;            // philosopher angle
+      const px = 210 + 150 * Math.cos(a), py = 210 + 150 * Math.sin(a);
+      const s = st["P" + i] || "thinking";
+      svg += `<circle cx="${px}" cy="${py}" r="38" fill="${COLORS[s]}"/>
+        <text x="${px}" y="${py - 3}" fill="#fff" text-anchor="middle" font-size="13">P${i}</text>
+        <text x="${px}" y="${py + 13}" fill="#fff" text-anchor="middle" font-size="11">${s}</text>`;
+      const fa = a - Math.PI / 4;                          // fork i sits left of philosopher i
+      const fx = 210 + 85 * Math.cos(fa), fy = 210 + 85 * Math.sin(fa);
+      const o = forks[i];
+      const col = o < 0 ? "#bbb" : OWNER_COLORS[o];
+      svg += `<rect x="${fx - 14}" y="${fy - 10}" width="28" height="20" rx="4" fill="${col}"/>
+        <text x="${fx}" y="${fy + 4}" text-anchor="middle" font-size="10" fill="#000">F${i}${o < 0 ? "" : ":P" + o}</text>`;
+    }
+    stage.innerHTML = svg + "</svg><div>Grey fork = free, coloured fork = held by that philosopher.</div>";
+  }
+}
+
+function step() {
+  if (idx >= EVENTS.length) { pause(); return; }
+  const e = EVENTS[idx++];
+  apply(e); draw();
+  const log = document.getElementById("log");
+  log.innerHTML += `[${e.t}s] ${e.actor} -> ${e.state}<br>`;
+  log.scrollTop = log.scrollHeight;
+  document.getElementById("clock").textContent = " event " + idx + "/" + EVENTS.length;
+}
+function play() { pause(); timer = setInterval(step, 1100 - document.getElementById("speed").value * 100); }
+function pause() { clearInterval(timer); timer = null; }
+function reset() {
+  pause(); idx = 0; st = {}; readers = 0; data = 0; forks = [-1,-1,-1,-1];
+  document.getElementById("log").innerHTML = ""; draw();
+}
+draw();
+</script></body></html>

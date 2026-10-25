@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Readers-Writers (Semaphore)</title>
+<style>
+body{font-family:sans-serif;margin:20px;background:#f4f4f4}
+.box{display:inline-block;margin:6px;padding:10px 14px;border-radius:8px;color:#fff;min-width:120px;text-align:center}
+#res{padding:10px;margin:10px 0;background:#fff;border:2px solid #555;border-radius:8px}
+#log{height:220px;overflow:auto;background:#fff;border:1px solid #ccc;padding:6px;font-family:monospace;font-size:13px}
+button{margin-right:6px;padding:4px 12px}
+</style></head><body>
+<h2>Readers-Writers (Semaphore)</h2>
+<div>
+ <button onclick="play()">Start</button><button onclick="pause()">Pause</button>
+ <button onclick="reset()">Reset</button>
+ Speed <input type="range" id="speed" min="1" max="10" value="5">
+ <span id="clock"></span>
+</div>
+<div id="stage"></div>
+<h3>Event timeline</h3><div id="log"></div>
+<script>
+const EVENTS = [{"actor": "W2", "state": "waiting", "t": 0.354}, {"actor": "W2", "state": "writing", "data": 0, "t": 0.354}, {"actor": "R3", "state": "waiting", "t": 0.361}, {"actor": "R1", "state": "waiting", "t": 0.39}, {"actor": "R2", "state": "waiting", "t": 0.496}, {"actor": "W1", "state": "waiting", "t": 0.513}, {"actor": "R4", "state": "waiting", "t": 0.597}, {"actor": "W2", "state": "done", "data": 1, "t": 0.949}, {"actor": "R3", "state": "reading", "readers": 1, "data": 1, "t": 0.949}, {"actor": "R1", "state": "reading", "readers": 2, "data": 1, "t": 0.95}, {"actor": "R2", "state": "reading", "readers": 3, "data": 1, "t": 0.95}, {"actor": "R4", "state": "reading", "readers": 4, "data": 1, "t": 0.95}, {"actor": "W2", "state": "waiting", "t": 1.2}, {"actor": "R3", "state": "done", "readers": 3, "t": 1.404}, {"actor": "R4", "state": "done", "readers": 2, "t": 1.427}, {"actor": "R1", "state": "done", "readers": 1, "t": 1.5}, {"actor": "R4", "state": "waiting", "t": 1.546}, {"actor": "R4", "state": "reading", "readers": 2, "data": 1, "t": 1.546}, {"actor": "R2", "state": "done", "readers": 1, "t": 1.643}, {"actor": "R1", "state": "waiting", "t": 1.825}, {"actor": "R1", "state": "reading", "readers": 2, "data": 1, "t": 1.825}, {"actor": "R3", "state": "waiting", "t": 1.993}, {"actor": "R3", "state": "reading", "readers": 3, "data": 1, "t": 1.993}, {"actor": "R2", "state": "waiting", "t": 1.995}, {"actor": "R2", "state": "reading", "readers": 4, "data": 1, "t": 1.995}, {"actor": "R4", "state": "done", "readers": 3, "t": 2.086}, {"actor": "R1", "state": "done", "readers": 2, "t": 2.204}, {"actor": "R2", "state": "done", "readers": 1, "t": 2.477}, {"actor": "R3", "state": "done", "readers": 0, "t": 2.615}, {"actor": "W1", "state": "writing", "data": 1, "t": 2.615}, {"actor": "W1", "state": "done", "data": 2, "t": 2.92}, {"actor": "W2", "state": "writing", "data": 2, "t": 2.92}, {"actor": "W1", "state": "waiting", "t": 3.063}, {"actor": "W2", "state": "done", "data": 3, "t": 3.312}, {"actor": "W1", "state": "writing", "data": 3, "t": 3.312}, {"actor": "W1", "state": "done", "data": 4, "t": 3.807}];
+const KIND = "rw";
+const COLORS = {waiting:"#e67e22",reading:"#27ae60",writing:"#c0392b",done:"#7f8c8d",
+  thinking:"#2980b9",hungry:"#e67e22",acquiring:"#8e44ad",eating:"#27ae60",releasing:"#16a085"};
+const OWNER_COLORS = ["#c0392b","#2980b9","#27ae60","#8e44ad"];
+let idx = 0, timer = null, st = {}, readers = 0, data = 0, forks = [-1,-1,-1,-1];
+
+function apply(e) {
+  st[e.actor] = e.state;
+  if (e.readers !== undefined) readers = e.readers;
+  if (e.data !== undefined) data = e.data;
+  if (e.forks !== undefined) forks = e.forks;
+}
+
+function draw() {
+  const stage = document.getElementById("stage");
+  if (KIND === "rw") {
+    const names = [...new Set(EVENTS.map(e => e.actor))];
+    let h = "";
+    for (const n of names) {
+      const s = st[n] || "idle";
+      h += `<div class="box" style="background:${COLORS[s] || "#999"}"><b>${n}</b><br>${s}</div>`;
+    }
+    const writerActive = Object.values(st).includes("writing");
+    h += `<div id="res"><b>Shared resource</b> &mdash; value: ${data} |
+      active readers: ${readers} | writer inside: ${writerActive ? "YES" : "no"}</div>`;
+    stage.innerHTML = h;
+  } else {
+    let svg = '<svg width="420" height="420"><circle cx="210" cy="210" r="70" fill="#ddd"/>';
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2 - Math.PI / 2;            // philosopher angle
+      const px = 210 + 150 * Math.cos(a), py = 210 + 150 * Math.sin(a);
+      const s = st["P" + i] || "thinking";
+      svg += `<circle cx="${px}" cy="${py}" r="38" fill="${COLORS[s]}"/>
+        <text x="${px}" y="${py - 3}" fill="#fff" text-anchor="middle" font-size="13">P${i}</text>
+        <text x="${px}" y="${py + 13}" fill="#fff" text-anchor="middle" font-size="11">${s}</text>`;
+      const fa = a - Math.PI / 4;                          // fork i sits left of philosopher i
+      const fx = 210 + 85 * Math.cos(fa), fy = 210 + 85 * Math.sin(fa);
+      const o = forks[i];
+      const col = o < 0 ? "#bbb" : OWNER_COLORS[o];
+      svg += `<rect x="${fx - 14}" y="${fy - 10}" width="28" height="20" rx="4" fill="${col}"/>
+        <text x="${fx}" y="${fy + 4}" text-anchor="middle" font-size="10" fill="#000">F${i}${o < 0 ? "" : ":P" + o}</text>`;
+    }
+    stage.innerHTML = svg + "</svg><div>Grey fork = free, coloured fork = held by that philosopher.</div>";
+  }
+}
+
+function step() {
+  if (idx >= EVENTS.length) { pause(); return; }
+  const e = EVENTS[idx++];
+  apply(e); draw();
+  const log = document.getElementById("log");
+  log.innerHTML += `[${e.t}s] ${e.actor} -> ${e.state}<br>`;
+  log.scrollTop = log.scrollHeight;
+  document.getElementById("clock").textContent = " event " + idx + "/" + EVENTS.length;
+}
+function play() { pause(); timer = setInterval(step, 1100 - document.getElementById("speed").value * 100); }
+function pause() { clearInterval(timer); timer = null; }
+function reset() {
+  pause(); idx = 0; st = {}; readers = 0; data = 0; forks = [-1,-1,-1,-1];
+  document.getElementById("log").innerHTML = ""; draw();
+}
+draw();
+</script></body></html>
